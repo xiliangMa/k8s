@@ -1,0 +1,190 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "nats.fullname" . }}-statefulset
+  labels:
+    app: {{ include "nats.name" . }}
+    {{- include "nats.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ include "nats.name" . }}
+  replicas: {{ .Values.statefulSet.replicas }}
+  serviceName: {{ include "nats.name" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "nats.name" . }}
+    spec:
+      # Common volumes for the containers
+      volumes:
+      - name: config-volume
+        configMap:
+          name: {{ include "nats.fullname" . }}-configmap
+      - name: accounts-volume
+        configMap:
+          name: {{ include "nats.fullname" . }}-accounts-configmap
+      - name: pid
+        emptyDir: {}
+      - name: advertiseconfig
+        emptyDir: {}
+
+      # Required to be able to HUP signal and apply config reload
+      # to the server without restarting the pod.
+      shareProcessNamespace: true
+
+      # Required to be able to lookup external public ip
+      # that is setup as the client advertise.
+      serviceAccountName: nats-server
+
+      # Initializer container required to be able to lookup
+      # the external ip on which this node is running.
+      initContainers:
+      - name: bootconfig
+        command:
+        - nats-pod-bootconfig
+        - -f
+        - /etc/nats-config/advertise/client_advertise.conf
+        - -gf
+        - /etc/nats-config/advertise/gateway_advertise.conf
+        env:
+        - name: KUBERNETES_NODE_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: spec.nodeName
+        image: {{ .Values.image.bootConfig }}
+        imagePullPolicy: IfNotPresent
+        volumeMounts:
+        - mountPath: /etc/nats-config/advertise
+          name: advertiseconfig
+          subPath: advertise
+
+      #################
+      #               #
+      #  NATS Server  #
+      #               #
+      #################
+      terminationGracePeriodSeconds: 60
+      containers:
+      - name: nats
+        image: {{ .Values.image.natsServer }}
+        ports:
+        - name: client
+          containerPort: {{ .Values.port.client }}
+          hostPort: {{ .Values.port.client }}
+        - name: gateways
+          containerPort: {{ .Values.port.gateways }}
+          hostPort: {{ .Values.port.gateways }}
+        - name: leafnodes
+          containerPort: {{ .Values.port.leafnodes }}
+          hostPort: {{ .Values.port.leafnodes }}
+        - name: cluster
+          containerPort: {{ .Values.port.cluster }}
+        - name: monitor
+          containerPort: {{ .Values.port.monitor }}
+        - name: metrics
+          containerPort: {{ .Values.port.metrics }}
+        command:
+        - nats-server
+        - --config
+        - /etc/nats-config/nats.conf
+
+        # Required to be able to define an environment variable
+        # that refers to other environment variables.  This env var
+        # is later used as part of the configuration file.
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: CLUSTER_ADVERTISE
+          value: $(POD_NAME).nats.$(POD_NAMESPACE).svc
+        volumeMounts:
+          - name: config-volume
+            mountPath: /etc/nats-config
+          - name: accounts-volume
+            mountPath: /etc/nats-config/accounts
+          - name: pid
+            mountPath: /var/run/nats
+          - mountPath: /etc/nats-config/advertise
+            name: advertiseconfig
+            subPath: advertise
+
+        # Liveness/Readiness probes against the monitoring
+        #
+        livenessProbe:
+          httpGet:
+            path: /
+            port: {{ .Values.port.monitor }}
+          initialDelaySeconds: 10
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /
+            port: {{ .Values.port.monitor }}
+          initialDelaySeconds: 10
+          timeoutSeconds: 5
+
+        # Gracefully stop NATS Server on pod deletion or image upgrade.
+        #
+        lifecycle:
+          preStop:
+            exec:
+              # Using the alpine based NATS image, we add an extra sleep that is
+              # the same amount as the terminationGracePeriodSeconds to allow
+              # the NATS Server to gracefully terminate the client connections.
+              #
+              command:
+              - /bin/sh
+              - -c
+              - /nats-server -sl=ldm=/var/run/nats/nats.pid && /bin/sleep 60
+
+      #################################
+      #                               #
+      #  NATS Configuration Reloader  #
+      #                               #
+      #################################
+      - name: reloader
+        image: {{ .Values.image.configReloader }}
+        command:
+         - "nats-server-config-reloader"
+         - "-pid"
+         - "/var/run/nats/nats.pid"
+         - "-config"
+         - "/etc/nats-config/nats.conf"
+         - "-config"
+         - "/etc/nats-config/accounts/resolver.conf"
+        volumeMounts:
+          - name: config-volume
+            mountPath: /etc/nats-config
+          - name: accounts-volume
+            mountPath: /etc/nats-config/accounts
+          - name: pid
+            mountPath: /var/run/nats
+
+      {{ if .Values.statefulSet.withPrometheusExporter -}}
+      ##############################
+      #                            #
+      #  NATS Prometheus Exporter  #
+      #                            #
+      ##############################
+      - name: metrics
+        image: {{ .Values.image.prometheus }}
+        args:
+        - -connz
+        - -routez
+        - -subz
+        - -varz
+        - -prefix=nats
+        - -use_internal_server_id
+        - -DV
+        - http://localhost:{{ .Values.port.monitor }}/
+        ports:
+        - name: metrics
+          containerPort: {{ .Values.port.metrics }}
+      {{ end }}

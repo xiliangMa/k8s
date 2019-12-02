@@ -1,0 +1,55 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "nats.fullname" . }}-configmap
+  labels:
+    app: {{ include "nats.name" . }}
+    {{- include "nats.labels" . | nindent 4 }}
+data:
+  nats.conf: |
+    pid_file: "/var/run/nats/nats.pid"
+
+    http: {{ .Values.port.monitor }}
+
+    cluster {
+      port: {{ .Values.port.cluster }}
+
+      routes [
+      {{- $end := int .Values.statefulSet.replicas -}}
+      {{- range $i := until $end }}
+        nats://nats-{{ $i }}.nats.default.svc:{{ $.Values.port.cluster }}
+      {{- end }}
+      ]
+
+      cluster_advertise: $CLUSTER_ADVERTISE
+      connect_retries: 30
+    }
+
+    #############################################
+    # Advertise the public ip of the Kubelet    #
+    # where this NATS Server node is running    #
+    #############################################
+    leafnodes {
+      listen: "0.0.0.0:{{ .Values.port.leafnodes }}"
+      include "advertise/gateway_advertise.conf"
+    }
+    include "advertise/client_advertise.conf"
+
+    #############################################
+    #                                           #
+    # Accounts resolver config                  #
+    #                                           #
+    #############################################
+    include "accounts/resolver.conf"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "nats.fullname" . }}-accounts-configmap
+  labels:
+    app: {{ include "nats.name" . }}
+    {{- include "nats.labels" . | nindent 4 }}
+data:
+  resolver.conf: |
+{{ .Values.file.resolverConf | indent 4 }}

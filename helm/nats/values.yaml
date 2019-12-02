@@ -1,0 +1,20 @@
+port:
+  client: 4222
+  cluster: 6222
+  gateways: 7522
+  leafnodes: 7422
+  metrics: 7777
+  monitor: 8222
+
+image:
+  prometheus: synadia/prometheus-nats-exporter:0.5.0
+  natsServer: nats:2.1.0-alpine3.10
+  configReloader: connecteverything/nats-server-config-reloader:0.6.0
+  bootConfig: connecteverything/nats-boot-config:0.5.2
+
+statefulSet:
+  replicas: 3
+  withPrometheusExporter: true
+
+file:
+  resolverConf: ''

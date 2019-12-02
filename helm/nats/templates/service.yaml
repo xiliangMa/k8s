@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "nats.fullname" . }}-service
+  labels:
+    app: {{ include "nats.name" . }}
+    {{- include "nats.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: {{ include "nats.name" . }}
+    {{- include "nats.selectorLabels" . | nindent 4 }}
+  clusterIP: None
+  ports:
+  - name: client
+    port: {{ .Values.port.client }}
+  - name: cluster
+    port: {{ .Values.port.cluster }}
+  - name: monitor
+    port: {{ .Values.port.monitor }}
+  - name: metrics
+    port: {{ .Values.port.metrics }}
+  - name: leafnodes
+    port: {{ .Values.port.leafnodes }}
+  - name: gateways
+    port: {{ .Values.port.gateways }}
