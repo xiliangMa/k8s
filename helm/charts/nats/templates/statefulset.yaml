@@ -41,17 +41,25 @@ spec:
         emptyDir: {}
 
       {{- if .Values.auth.enabled }}
-      {{- if eq .Values.auth.resolver.type "memory" }}
+      {{- with .Values.auth.resolver }}
+      {{- if eq .resolver.type "memory" }}
       # Volume with the memory resolver configuration.
       - name: resolver-volume
         configMap:
           name: {{ .Values.auth.resolver.configMap.name }}
       {{- end }}
 
-      {{- if eq .Values.auth.resolver.type "URL" }}
+      {{- if eq .resolver.type "URL" }}
       - name: operator-jwt-volume
         configMap:
           name: {{ .Values.auth.operatorjwt.configMap.name }}
+      {{- end }}
+      {{- end }}
+
+      {{- with .Values.auth.configMap }}
+      - name: auth-volume
+        configMap:
+          name: {{ .name }}
       {{- end }}
       {{- end }}
 
@@ -203,14 +211,21 @@ spec:
           {{- end }}
 
           {{- if .Values.auth.enabled }}
-          {{- if eq .Values.auth.resolver.type "memory" }}
+          {{- with .Values.auth.resolver }}
+          {{- if eq .type "memory" }}
           - name: resolver-volume
             mountPath: /etc/nats-config/accounts
           {{- end }}
 
-          {{- if eq .Values.auth.resolver.type "URL" }}
+          {{- if eq .type "URL" }}
           - name: operator-jwt-volume
             mountPath: /etc/nats-config/operator
+          {{- end }}
+
+          {{- with .Values.auth.configMap }}
+          - name: auth-volume
+            mountPath: /etc/nats-config/auth
+          {{- end }}
           {{- end }}
           {{- end }}
 
@@ -293,11 +308,25 @@ spec:
          - "/var/run/nats/nats.pid"
          - "-config"
          - "/etc/nats-config/nats.conf"
+         {{- if .Values.auth.enabled }}
+         {{- with .Values.auth.configMap }}
+         - "-config"
+         - "/etc/nats-config/auth/{{ .key }}"
+         {{- end }}
+         {{- end }}
+
         volumeMounts:
           - name: config-volume
             mountPath: /etc/nats-config
           - name: pid
             mountPath: /var/run/nats
+
+          {{- if .Values.auth.enabled }}
+          {{- with .Values.auth.configMap }}
+          - name: auth-volume
+            mountPath: /etc/nats-config/auth
+          {{- end }}
+          {{- end }}
       {{ end }}
 
       ##############################

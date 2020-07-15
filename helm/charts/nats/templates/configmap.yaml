@@ -336,4 +336,7 @@ data:
     system_account: {{ .Values.auth.systemAccount }}
     {{- end }}
 
+    {{- with .Values.auth.configMap }}
+    include "auth/{{ .key }}"
+    {{- end }}
     {{- end }}

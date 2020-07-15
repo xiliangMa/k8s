@@ -179,7 +179,12 @@ exporter:
 
 # Authentication setup
 auth:
-  enabled: false
+  enabled: enabled
+
+  # Reference a configuration map directly that includes the auth.
+  configMap:
+    name: my-nats-users
+    key: users.conf
 
   # Reference to the Operator JWT.
   # operatorjwt:
