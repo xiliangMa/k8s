@@ -2,11 +2,11 @@
 
 set -eu
 
-VERSION="0.2.2"
+VERSION="v0.7.4"
 
-NATS_K8S_COMMIT=93c2a213bd26791fda29da2b7238e3f3b1ca36e1
+NATS_K8S_COMMIT=c2b32d7d19a7f6f95e793cb61ab29b96d0cab3bb
 
-NATS_K8S_VERSION=https://raw.githubusercontent.com/nats-io/k8s/$NATS_K8S_COMMIT
+NATS_K8S_VERSION=https://raw.githubusercontent.com/xiliangMa/k8s/$NATS_K8S_COMMIT
 
 NATS_SERVER_YML=${DEFAULT_NATS_SERVER_YML:=$NATS_K8S_VERSION/nats-server/nats-server-with-auth.yml}
 
